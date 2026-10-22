@@ -1,0 +1,63 @@
+{
+	"name": "cli-template-js",
+	"description": "A template for creating CLIs with TypeScript",
+	"version": "0.0.3",
+	"bin": {
+		"cli": "./dist/cli.mjs",
+		"cli-template": "./dist/cli.mjs"
+	},
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"scripts": {
+		"dev": "tsdown --watch",
+		"execute": "bun /dist/cli.mjs",
+		"build": "tsdown",
+		"test:run": "vitest run --silent",
+		"lint": "biome lint .",
+		"lint:fix": "biome lint --write --unsafe .",
+		"format": "biome format .",
+		"format:write": "biome format . --write",
+		"typecheck": "tsgo --noEmit",
+		"release": "tsgo --noEmit && npm run build && npm publish",
+		"generate:cli": "commander-codegen -i src/index.ts -o src/lib/generated/cli.gen.ts",
+		"prebuild": "bun run generate:cli"
+	},
+	"devDependencies": {
+		"commander-codegen": "^0.0.3",
+		"@biomejs/biome": "2.5.5",
+		"@types/bun": "latest",
+		"@types/inquirer": "^9.0.10",
+		"ts-morph": "^28.0.0",
+		"tsdown": "^0.22.12",
+		"vitest": "^4.1.10"
+	},
+	"peerDependencies": {
+		"typescript": "^7.0.2"
+	},
+	"dependencies": {
+		"@ts-utilities/notify": "^0.0.12",
+		"commander": "^15.0.0",
+		"inquirer": "^14.0.2"
+	},
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/sohanemon/cli-template.git"
+	},
+	"keywords": [
+		"cli",
+		"bun",
+		"commander",
+		"inquirer"
+	],
+	"author": {
+		"name": "Sohan Emon",
+		"email": "sohanemon@outlook.com"
+	},
+	"exports": {
+		".": "./dist/cli.mjs",
+		"./package.json": "./package.json"
+	}
+}
