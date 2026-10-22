@@ -10,7 +10,7 @@ sharp.concurrency(1); // job-level limiter owns parallelism, not libvips
 const WORK_MAX = 2400;
 
 /** Sigma of the light blur feeding the fabric shading map. */
-const SHADE_BLUR_SIGMA = 1.5;
+const SHADE_BLUR_SIGMA = 6;
 
 /** Sigma of the heavy blur feeding the fabric displacement map. */
 const DISPLACE_BLUR_SIGMA = 14;
@@ -111,6 +111,104 @@ interface DesignImage {
 	height: number;
 	/** Mean luminance of the visible ink (0..1). */
 	meanLuminance: number;
+}
+
+function rgbToLab(r: number, g: number, b: number): [number, number, number] {
+	const linear = (v: number) => {
+		const s = v / 255;
+		return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+	};
+	const R = linear(r);
+	const G = linear(g);
+	const B = linear(b);
+	const x = (R * 0.4124564 + G * 0.3575761 + B * 0.1804375) / 0.95047;
+	const y = R * 0.2126729 + G * 0.7151522 + B * 0.072175;
+	const z = (R * 0.0193339 + G * 0.119192 + B * 0.9503041) / 1.08883;
+	const f = (v: number) => (v > 0.008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116);
+	const fx = f(x);
+	const fy = f(y);
+	const fz = f(z);
+	return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
+function keyOpaqueBackground(raw: Buffer, width: number, height: number): void {
+	const bins = new Map<number, number>();
+	const edge = (x: number, y: number) => {
+		const i = (y * width + x) * 4;
+		const key =
+			(((raw[i] ?? 0) >> 4) << 8) |
+			(((raw[i + 1] ?? 0) >> 4) << 4) |
+			((raw[i + 2] ?? 0) >> 4);
+		bins.set(key, (bins.get(key) ?? 0) + 1);
+	};
+	for (let x = 0; x < width; x++) {
+		edge(x, 0);
+		if (height > 1) edge(x, height - 1);
+	}
+	for (let y = 1; y < height - 1; y++) {
+		edge(0, y);
+		if (width > 1) edge(width - 1, y);
+	}
+	const mode = [...bins].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
+	const bg: [number, number, number] = [
+		((mode >> 8) & 15) * 16 + 8,
+		((mode >> 4) & 15) * 16 + 8,
+		(mode & 15) * 16 + 8,
+	];
+	const [bgR, bgG, bgB] = bg;
+	const green = bgG > bgR * 1.25 && bgG > bgB * 1.25 && bgG > 60;
+	if (green) {
+		for (let i = 0; i < raw.length; i += 4) {
+			const r = raw[i] ?? 0;
+			const g = raw[i + 1] ?? 0;
+			const b = raw[i + 2] ?? 0;
+			const dominance = g - Math.max(r, b);
+			raw[i + 3] = Math.round(clamp(1 - (dominance - 40) / 90, 0, 1) * 255);
+			if (dominance > 0) raw[i + 1] = Math.min(g, Math.max(r, b));
+		}
+		return;
+	}
+	const lab = rgbToLab(bgR, bgG, bgB);
+	const distances = new Float32Array(width * height);
+	for (let i = 0; i < raw.length; i += 4) {
+		const color = rgbToLab(raw[i] ?? 0, raw[i + 1] ?? 0, raw[i + 2] ?? 0);
+		distances[i / 4] = Math.hypot(
+			color[0] - lab[0],
+			color[1] - lab[1],
+			color[2] - lab[2],
+		);
+	}
+	const visited = new Uint8Array(width * height);
+	const queue = new Int32Array(width * height);
+	let head = 0;
+	let tail = 0;
+	const enqueue = (index: number) => {
+		if (visited[index] || (distances[index] ?? 60) >= 60) return;
+		visited[index] = 1;
+		queue[tail++] = index;
+	};
+	for (let x = 0; x < width; x++) {
+		enqueue(x);
+		enqueue((height - 1) * width + x);
+	}
+	for (let y = 1; y < height - 1; y++) {
+		enqueue(y * width);
+		enqueue(y * width + width - 1);
+	}
+	while (head < tail) {
+		const p = queue[head++] ?? 0;
+		const x = p % width;
+		const y = Math.floor(p / width);
+		if (x > 0) enqueue(p - 1);
+		if (x + 1 < width) enqueue(p + 1);
+		if (y > 0) enqueue(p - width);
+		if (y + 1 < height) enqueue(p + width);
+	}
+	for (let p = 0; p < visited.length; p++) {
+		if (!visited[p]) continue;
+		const alpha = clamp(((distances[p] ?? 0) - 20) / 40, 0, 1);
+		raw[p * 4 + 3] = Math.round(alpha * 255);
+	}
 }
 
 const shirtCache = new Map<string, Promise<ShirtMaps>>();
@@ -461,6 +559,7 @@ function applyGradientScale(maps: ShirtMaps, box: PixelBox): number {
 async function loadDesign(request: LoadDesignRequest): Promise<DesignImage> {
 	const { designPath, maxWidth, maxHeight } = request;
 	const buffer = await readFile(designPath);
+	const sourceMeta = await sharp(buffer).metadata();
 	const { data, info } = await sharp(buffer)
 		.rotate()
 		.ensureAlpha()
@@ -471,6 +570,15 @@ async function loadDesign(request: LoadDesignRequest): Promise<DesignImage> {
 	const width = info.width;
 	const height = info.height;
 	const channels = info.channels;
+	if (!sourceMeta.hasAlpha) keyOpaqueBackground(raw, width, height);
+	let opaquePixels = 0;
+	for (let i = 3; i < raw.length; i += 4)
+		if ((raw[i] ?? 0) >= 250) opaquePixels++;
+	if (opaquePixels / (width * height) > 0.995) {
+		throw new Error(
+			`Design remains more than 99.5% opaque after background keying: ${designPath}`,
+		);
+	}
 
 	let minX = width;
 	let minY = height;
@@ -570,7 +678,10 @@ export async function compositeOverlayOntoShirt(
 
 	const gradRef = applyGradientScale(maps, box);
 	const shadeScale = options.shade * 0.1;
-	const displace = options.displace;
+	const displace =
+		(Math.min(options.displace, (6 * options.size) / 2000) *
+			Math.max(maps.width, maps.height)) /
+		options.size;
 	const opacity = options.opacity;
 
 	// NOTE: design sits centered horizontally, top aligned inside the print box.
@@ -605,6 +716,14 @@ export async function compositeOverlayOntoShirt(
 				const weight = (2 * mag) / (mag + gradRef);
 				ox = (gx / mag) * weight * displace;
 				oy = (gy / mag) * weight * displace;
+				const offset = Math.hypot(ox, oy);
+				const maxOffset =
+					(((6 * options.size) / 2000) * Math.max(maps.width, maps.height)) /
+					options.size;
+				if (offset > maxOffset) {
+					ox *= maxOffset / offset;
+					oy *= maxOffset / offset;
+				}
 			}
 
 			// NOTE: sample the design displaced along the fabric slope.
@@ -658,7 +777,7 @@ export async function compositeOverlayOntoShirt(
 			const inkG = clamp(pg / pa, 0, 255);
 			const inkB = clamp(pb / pa, 0, 255);
 
-			const shade = clamp((maps.shade[mi] ?? 0) * shadeScale, -0.6, 0.6);
+			const shade = clamp((maps.shade[mi] ?? 0) * shadeScale, -0.15, 0.15);
 			const lightK = 1 + shade;
 			const alpha = pa * opacity;
 

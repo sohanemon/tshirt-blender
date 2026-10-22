@@ -16,7 +16,7 @@ import {
 } from '../utils/overlay-compositor';
 
 /** Design file types picked up when `--design` points at a folder. */
-const DESIGN_EXTENSIONS = new Set(['.png', '.webp']);
+const DESIGN_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
 /** Parallel composites in a batch run. */
 const BATCH_CONCURRENCY = 4;
@@ -80,8 +80,8 @@ export function overlayCommand() {
 		)
 		.option('--size <px>', 'Output size in pixels (square)', '2000')
 		.option('--opacity <n>', 'Design opacity over the fabric', '0.93')
-		.option('--displace <px>', 'Displacement along the fabric folds', '14')
-		.option('--shade <n>', 'Fabric shading strength', '6')
+		.option('--displace <px>', 'Displacement along the fabric folds', '8')
+		.option('--shade <n>', 'Fabric shading strength', '2')
 		.option(
 			'--box <l,t,w,h>',
 			'Print area as fractions of the shirt image',
