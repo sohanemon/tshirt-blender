@@ -1,173 +1,107 @@
-# cli-template
+# tshirt-blender
 
-A Bun-powered template for building a package that's **both a library and a CLI** from a single source of truth. Write a plain, documented function once in `src/index.ts` — get a fully-featured Commander CLI command generated automatically, complete with flags, validation, choices, and interactive prompts for anything the user doesn't supply.
+Composite artwork onto t-shirt photos with fabric-aware shading and
+displacement. Built with Bun, Commander and [sharp](https://sharp.pixelplumbing.com/).
 
-Built with Commander, Chalk, Inquirer, and `ts-morph` for code generation.
+One command:
 
-## How it works
-
-1. Write and export a normal function from `src/index.ts`.
-2. Document it with a few TSDoc tags (`@description` is the only required one).
-3. Run the generator — it reads your function's signature and TSDoc, and produces a matching CLI command.
-4. Your function stays fully usable as a plain import too — nothing about it is CLI-specific.
-
-```ts
-/**
- * @description Set the log level
- * @param level the log level
- */
-export function setLevel(level: 'debug' | 'info' | 'error') {
-	return `level set to ${level}`;
-}
-```
-
-Running `bun run generate:cli` turns this into a working `set-level --level <value>` command, with `--level` validated against `debug`/`info`/`error`, and an interactive select prompt if `--level` is omitted. No CLI code was hand-written for this command — commander args, choices, and prompts are all derived straight from the function's type signature and TSDoc.
+- `overlay` — drop a design onto a shirt photo, no setup needed. The print area
+  is a fixed chest rectangle, the design follows the fabric folds and picks up
+  the fabric shading.
 
 ## Usage
 
 ```sh
-# Regenerate CLI commands from src/index.ts
-bun run generate:cli
-
 # Run locally
 bun src/cli.ts --help
 
-# Dev script
-bun run dev
+# Single design
+bun src/cli.ts overlay \
+  --shirt src/assets/black-tshirt.png \
+  --design src/assets/designs/design-a.png \
+  --out out/mockups/design-a.jpg
+
+# Batch a folder, two color variants
+bun src/cli.ts overlay \
+  --shirt src/assets/black-tshirt.png \
+  --design src/assets/designs \
+  --out out/mockups \
+  --color '#ff0000' --color '#1f2937'
 ```
 
-## Writing a command
+## `overlay`
 
-Every exported function in `src/index.ts` becomes a command. The generator supports:
+The shirt photo should be a transparent-background PNG; the design is a
+transparent PNG (or a folder of PNG/WebP files to batch).
 
-| TS type                          | CLI behavior                                      | Prompt (if required & missing) |
-|-----------------------------------|----------------------------------------------------|----------------------------------|
-| `string`                          | `--flag <value>`                                   | text input                       |
-| `number`                          | `--flag <value>`                                   | text input, coerced to number    |
-| `boolean`                         | `--flag` (boolean flag)                             | confirm (y/n)                    |
-| `string[]` / `number[]`           | `--flag <values...>` (repeatable)                   | comma-separated input            |
-| `'a' \| 'b' \| 'c'`               | `--flag <value>` validated against choices          | select (single choice)           |
-| `('a' \| 'b' \| 'c')[]`           | `--flag <values...>` validated against choices      | checkbox (multi-select)          |
-| `{ a: string; b: number }`        | flattened to `--parent-a`, `--parent-b`             | one prompt per sub-field         |
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--shirt <path>` | required | T-shirt photo with a transparent background |
+| `--design <path>` | required | Design image, or a folder of PNG/WebP designs |
+| `--out <path>` | required | Output file (single design) or output folder (batch) |
+| `--color <hex>` | none | Shirt color variant, repeatable |
+| `--size <px>` | `2000` | Output size, square |
+| `--opacity <n>` | `0.93` | Design opacity over the fabric |
+| `--displace <px>` | `14` | Displacement along the fabric folds |
+| `--shade <n>` | `6` | Fabric shading strength on the ink |
+| `--box <l,t,w,h>` | `0.33,0.22,0.34,0.32` | Print area as fractions of the shirt image |
 
-Every parameter is generated as a flag, never a positional argument — this is what lets any missing **required** value fall back to an interactive prompt instead of commander hard-failing. Optional parameters (with or without a default) are never prompted for; they just use their default or stay `undefined`.
+Batch output is named `<design>[-<colorhex>].jpg`. Recoloring a dark base shirt
+looks fake, and a dark design on a dark shirt disappears — the command warns
+about both.
 
-TSDoc tags recognized by the generator:
+### How the composite works
 
-```ts
-/**
- * @name custom-command-name     // optional — defaults to the export name
- * @alias c                       // optional — short alias for the command
- * @description What this does   // REQUIRED — the only mandatory tag
- * @param paramName description   // optional — shown in --help; falls back to "name (type)"
- * @example my-command --flag x   // optional, repeatable — shown in --help
- */
-export function myCommand(/* ... */) {}
-```
-
-Nested object parameters document their fields with a dotted path:
-
-```ts
-/**
- * @description Configure a service
- * @param config.name service name
- * @param config.mode service mode
- */
-export function configureService(config: { name: string; mode: 'active' | 'standby' }) {
-	return `${config.name}:${config.mode}`;
-}
-```
-
-Arrays of objects and other complex/unsupported types aren't auto-generated — the generator throws a clear error telling you which parameter and why, so you can either simplify the type or hand-write that one command in `src/lib/cli-commands/` instead (see below).
-
-## Manual (non-generated) commands
-
-Some commands are inherently CLI-only — interactive-only flows, commands with no meaningful "library" equivalent, or ones needing prompt logic more complex than the generator supports. These live outside `index.ts` and are registered by hand in `src/cli.ts`, side-by-side with the generated ones. They're never picked up or touched by the generator.
-
-## Commands (current template examples)
-
-```
-greet <name>     Greet someone
-interactive|i    Launch an interactive prompt session
-split <string>   Split a string into parts
-spinner          Show a spinner animation
-```
+1. The shirt is loaded once and cached; the shading and displacement maps are
+   derived from it and reused for every design.
+2. **Shading** — greyscale + light blur, normalized on the 2/50/98 luminance
+   percentiles of the visible fabric. A black shirt spans only a few luminance
+   levels, so the range is stretched before use.
+3. **Displacement** — greyscale + heavy blur, then central differences give the
+   fabric slope. The design is sampled along that slope, so the print follows
+   the folds.
+4. **Blend** — the design is fit inside the print box (never stretched),
+   sampled with premultiplied alpha (no halo), shaded by the fabric, then
+   alpha-blended onto the shirt and clipped to its silhouette.
+5. **Export** — resized to a square, flattened on white, JPEG quality 88.
 
 ## Global install
 
-The `bin` field in `package.json` points to `src/cli.ts` with a `#!/usr/bin/env bun` shebang, so the CLI can be installed globally:
-
 ```sh
-# Install globally from local
 bun install -g .
-
-# Or link for development
+# or link for development
 bun link
-
-# Or install from npm once published
-bun install -g cli-template
 ```
 
-Once installed, run from anywhere:
-
 ```sh
-cli-template greet --name World
-cli-template split "a,b,c" --first
-```
-
-You can also use it ad-hoc without installing:
-
-```sh
-bunx cli-template greet --name World
+tshirt-blender overlay --shirt shirt.png --design art.png --out out.jpg
 ```
 
 ## Using it as a library
 
-Everything exported from `src/index.ts` is also just a normal, importable function — the CLI is a generated layer on top, not a replacement:
-
 ```ts
-import { setLevel } from 'cli-template';
+import { compositeOverlayOntoShirt, loadShirtMaps } from 'tshirt-blender';
 
-setLevel('debug');
+const maps = await loadShirtMaps('shirt.png');
+const { data } = await compositeOverlayOntoShirt({
+  designPath: 'art.png',
+  maps,
+  options: {
+    size: 2000,
+    opacity: 0.93,
+    displace: 14,
+    shade: 6,
+    box: { left: 0.33, top: 0.22, width: 0.34, height: 0.32 },
+  },
+});
 ```
 
-## Interactive prompts
-
-Interactive prompting happens automatically wherever a required parameter is left unspecified on the command line — you don't need to do anything special to enable it per-command. Under the hood, generated commands use **Inquirer**:
+## Development
 
 ```sh
-cli-template set-level
-# ? level  (Use arrow keys)
-# ❯ debug
-#   info
-#   error
+bun run dev       # watch build
+bun run build     # bundle to dist/
+bun run typecheck # tsc --noEmit
+bun run lint      # biome
+bun run test:run  # vitest
 ```
-
-```sh
-cli-template set-level --level debug
-# runs immediately, no prompt — the value was already supplied
-```
-
-For fully custom interactive flows beyond what the generator produces, write the command by hand — see the existing `interactive` command in `src/lib/cli-commands/` for a direct-Inquirer example:
-
-```ts
-import inquirer from 'inquirer';
-
-const answers = await inquirer.prompt([
-  { type: 'input', name: 'name', message: 'What is your name?', default: 'World' },
-  { type: 'select', name: 'color', message: 'Pick a color:', choices: ['Red', 'Green', 'Blue', 'Yellow'] },
-  { type: 'confirm', name: 'shout', message: 'Shout it?', default: false },
-]);
-
-console.log(`Hello, ${answers.name}! Your color is ${answers.color}.`);
-```
-
-Run it:
-
-```sh
-bun src/cli.ts interactive
-# or
-bun run dev interactive
-```
-
-

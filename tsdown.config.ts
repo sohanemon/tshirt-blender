@@ -11,8 +11,7 @@ export default defineConfig({
 	deps: { skipNodeModulesBundle: true },
 	exports: {
 		bin: {
-			cli: './src/cli.ts',
-			'cli-template': './src/cli.ts',
+			'tshirt-blender': './src/cli.ts',
 		},
 	},
 });

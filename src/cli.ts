@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import packageJson from '../package.json' with { type: 'json' };
-import { registerCommands } from './lib/generated/cli.gen';
+import { overlayCommand } from './lib/commands/overlay';
 
 const program = new Command();
 
@@ -12,7 +12,7 @@ program
 	.version(packageJson.version)
 	.showSuggestionAfterError();
 
-registerCommands(program);
+program.addCommand(overlayCommand());
 
 // Show help and exit 0 when no args are passed
 if (process.argv.length === 2) {

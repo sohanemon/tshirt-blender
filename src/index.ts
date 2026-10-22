@@ -1,1 +1,1 @@
-export * from './lib/utils/example';
+export * from './lib/utils/overlay-compositor';
