@@ -23,7 +23,7 @@
 		"release": "tsc --noEmit && npm run build && npm publish"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.5",
+		"@biomejs/biome": "2.6.4",
 		"@types/bun": "latest",
 		"@types/inquirer": "^9.0.10",
 		"tsdown": "^0.22.12",
