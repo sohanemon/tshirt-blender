@@ -3,11 +3,12 @@
 Composite artwork onto t-shirt photos with fabric-aware shading and
 displacement. Built with Bun, Commander and [sharp](https://sharp.pixelplumbing.com/).
 
-One command:
+Two commands:
 
 - `overlay` — drop a design onto a shirt photo, no setup needed. The print area
   is a fixed chest rectangle, the design follows the fabric folds and picks up
   the fabric shading.
+- `gen` — generate images in bulk from a prompt file, via Cloudflare Workers AI.
 
 ## Usage
 
@@ -28,6 +29,31 @@ bun src/cli.ts overlay \
   --out out/mockups \
   --color '#ff0000' --color '#1f2937'
 ```
+
+## `gen`
+
+Reads `CF_ACCOUNT_ID` and `CF_API_TOKEN` (or `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN`). Each line of the prompt file becomes one JPEG.
+Blank lines and `#` comments are skipped. `slug: prompt` sets the filename.
+
+```sh
+bun src/cli.ts gen \
+  --prompts prompts.example.txt \
+  --out out/images
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--prompts <path>` | required | Prompt file, one prompt per line |
+| `--out <dir>` | `out/images` | Output folder |
+| `--model <id>` | `@cf/black-forest-labs/flux-1-schnell` | Workers AI model |
+| `--concurrency <n>` | `2` | Parallel requests |
+| `--force` | off | Overwrite existing files |
+
+The request body is `{ "prompt": "..." }`, posted to
+`/accounts/$CF_ACCOUNT_ID/ai/run/@cf/black-forest-labs/flux-1-schnell`.
+The JPEG bytes are `result.image`. Existing files are skipped unless
+`--force` is set. A failed line does not stop the rest of the file.
 
 ## `overlay`
 
