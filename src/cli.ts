@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import packageJson from '../package.json' with { type: 'json' };
 import { genCommand } from './lib/commands/gen';
 import { overlayCommand } from './lib/commands/overlay';
+import { removeBgCommand } from './lib/commands/remove-bg';
 
 const program = new Command();
 
@@ -15,6 +16,7 @@ program
 
 program.addCommand(overlayCommand());
 program.addCommand(genCommand());
+program.addCommand(removeBgCommand());
 
 // Show help and exit 0 when no args are passed
 if (process.argv.length === 2) {

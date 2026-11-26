@@ -3,12 +3,13 @@
 Composite artwork onto t-shirt photos with fabric-aware shading and
 displacement. Built with Bun, Commander and [sharp](https://sharp.pixelplumbing.com/).
 
-Two commands:
+Three commands:
 
 - `overlay` — drop a design onto a shirt photo, no setup needed. The print area
   is a fixed chest rectangle, the design follows the fabric folds and picks up
   the fabric shading.
 - `gen` — generate images in bulk from a prompt file, via Cloudflare Workers AI.
+- `remove-bg` — remove image backgrounds with rembg and save transparent PNGs.
 
 ## Usage
 
@@ -54,6 +55,32 @@ The request body is `{ "prompt": "..." }`, posted to
 `/accounts/$CF_ACCOUNT_ID/ai/run/@cf/black-forest-labs/flux-1-schnell`.
 The JPEG bytes are `result.image`. Existing files are skipped unless
 `--force` is set. A failed line does not stop the rest of the file.
+
+## `remove-bg`
+
+Uses the `rembg` CLI installed through `mise.toml`. Single-image processing
+uses the `birefnet-general` model; folder batches use `isnet-general-use`.
+
+```sh
+# Writes photo.out.png beside photo.jpg
+bun src/cli.ts remove-bg --input photo.jpg
+
+# Writes one PNG per supported image under photos.out/
+bun src/cli.ts remove-bg --input photos/
+
+# Choose the output location explicitly
+bun src/cli.ts remove-bg --input photos/ --out out/transparent/
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--input <path>` | required | Image file or folder of images |
+| `--out <path>` | derived from input | PNG path for one image, or output folder for a batch |
+| `--force` | off | Overwrite existing outputs |
+
+Inputs are preserved. Folder batches accept JPG, PNG, and WebP images and
+preserve subfolders in the output. Existing outputs are skipped unless
+`--force` is provided.
 
 ## `overlay`
 
