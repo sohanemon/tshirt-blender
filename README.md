@@ -56,6 +56,13 @@ The request body is `{ "prompt": "..." }`, posted to
 The JPEG bytes are `result.image`. Existing files are skipped unless
 `--force` is set. A failed line does not stop the rest of the file.
 
+Before each request, `gen` adds a fixed T-shirt art direction to the prompt:
+one centered, complete graphic with a clean silhouette, generous margins, and
+a uniform gray background intended to make background removal easier. FLUX.1
+Schnell accepts a single prompt string, so this is prepended in the app rather
+than sent as a separate system role. The combined prompt must fit the model's
+2048-character limit.
+
 ## `remove-bg`
 
 Uses the `rembg` CLI installed through `mise.toml`. Single-image processing

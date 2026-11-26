@@ -4,6 +4,26 @@ export const DEFAULT_FLUX_MODEL = '@cf/black-forest-labs/flux-1-schnell';
 /** Workers AI rejects prompts outside this length. */
 export const PROMPT_MAX = 2048;
 
+export const PRINT_ART_PROMPT_PREFIX =
+	'Create a striking, professionally art-directed T-shirt graphic from this concept: ';
+
+export const PRINT_ART_PROMPT_SUFFIX =
+	'. Preserve the requested subject, style, colors, and intentional details. Show exactly one complete, isolated graphic, centered and fully inside the frame with generous clear margins. Make it visually memorable with a clean outer silhouette, crisp edges, strong contrast, and rich detail contained within the artwork. Use a polished illustration finish suitable for apparel printing. Place it on a perfectly flat, uniform medium neutral gray background that contrasts with the outer silhouette; no texture or gradient. Do not include a shirt, person, mockup, scene, environment, props, frame, border, cast shadow, watermark, or unintended text. Keep intentional white features outlined so they remain part of the artwork.';
+
+export function buildPrintArtPrompt(concept: string): string {
+	const trimmedConcept = concept.trim();
+	if (trimmedConcept.length === 0) {
+		throw new Error('Prompt concept must not be empty');
+	}
+	const prompt = `${PRINT_ART_PROMPT_PREFIX}${trimmedConcept}${PRINT_ART_PROMPT_SUFFIX}`;
+	if (prompt.length > PROMPT_MAX) {
+		throw new Error(
+			`Prompt with T-shirt art direction must be at most ${PROMPT_MAX} characters (received ${prompt.length})`,
+		);
+	}
+	return prompt;
+}
+
 export interface CloudflareCredentials {
 	accountId: string;
 	apiToken: string;
@@ -35,7 +55,9 @@ export function readCloudflareCredentials(
  * POST `{ prompt }` to the Workers AI run endpoint and return the JPEG bytes
  * from `result.image`.
  */
-export async function generateImage(request: GenerateImageRequest): Promise<Buffer> {
+export async function generateImage(
+	request: GenerateImageRequest,
+): Promise<Buffer> {
 	if (request.prompt.length === 0 || request.prompt.length > PROMPT_MAX) {
 		throw new Error(`Prompt must be 1-${PROMPT_MAX} characters`);
 	}
@@ -65,7 +87,9 @@ export async function generateImage(request: GenerateImageRequest): Promise<Buff
 
 	const image = readResultImage(body);
 	if (!image) {
-		throw new Error(`Cloudflare AI response missing result.image (${response.status})`);
+		throw new Error(
+			`Cloudflare AI response missing result.image (${response.status})`,
+		);
 	}
 
 	// NOTE: Some bindings prefix the same field as a data URI. The REST field is raw base64.

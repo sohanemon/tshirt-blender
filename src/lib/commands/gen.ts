@@ -7,8 +7,8 @@ import { Command } from 'commander';
 import { createLimiter } from '../utils/async';
 import {
 	DEFAULT_FLUX_MODEL,
+	buildPrintArtPrompt,
 	generateImage,
-	PROMPT_MAX,
 	readCloudflareCredentials,
 } from '../utils/image-gen';
 import { parsePromptFile } from '../utils/prompt-file';
@@ -109,16 +109,12 @@ export function genCommand() {
 									skipped++;
 									return;
 								}
-								if (entry.prompt.length > PROMPT_MAX) {
-									throw new Error(
-										`prompt is ${entry.prompt.length} characters, the maximum is ${PROMPT_MAX}`,
-									);
-								}
+								const prompt = buildPrintArtPrompt(entry.prompt);
 								const bytes = await generateImage({
 									accountId: credentials.accountId,
 									apiToken: credentials.apiToken,
 									model: options.model,
-									prompt: entry.prompt,
+									prompt,
 								});
 								await writeFile(outFile, bytes);
 								written++;
