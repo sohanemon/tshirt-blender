@@ -1,4 +1,4 @@
 [tools]
-python = "3.12"
+python = "3.15.2"
 pipx = "latest"
 "pipx:rembg" = { version = "latest", extras = "cpu,cli" }
